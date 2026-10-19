@@ -2,6 +2,11 @@ name: Build and test Snap
 
 on:
   workflow_dispatch:
+    inputs:
+      artifact_run_id:
+        description: Re-test an existing Snap artifact without rebuilding it
+        required: false
+        type: string
   push:
     branches: [main]
     paths: ['src/**', 'assets/**', 'Cargo.*', 'snap/**', '.github/workflows/snap.yml']
@@ -10,6 +15,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: snap-${{ github.ref }}
@@ -22,20 +28,48 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Build confined Snap and run unit tests
+        if: inputs.artifact_run_id == ''
         uses: canonical/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79 # v1
         id: build
+      - name: Download existing Snap for a desktop re-test
+        if: inputs.artifact_run_id != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: shoal-snap-amd64
+          path: existing-snap
+          run-id: ${{ inputs.artifact_run_id }}
+          github-token: ${{ github.token }}
+      - name: Select Snap package
+        id: package
+        env:
+          BUILT_SNAP: ${{ steps.build.outputs.snap }}
+        run: |
+          snap_file="$BUILT_SNAP"
+          if [ -z "$snap_file" ]; then
+            for file in existing-snap/*.snap; do
+              test -f "$file" || continue
+              snap_file="$file"
+              break
+            done
+          fi
+          test -f "$snap_file"
+          printf 'snap=%s\n' "$snap_file" >> "$GITHUB_OUTPUT"
       - name: Check Wayland launch and single-instance commands
         env:
-          SNAP_FILE: ${{ steps.build.outputs.snap }}
+          SNAP_FILE: ${{ steps.package.outputs.snap }}
         run: |
           sudo snap install --dangerous "$SNAP_FILE"
           snap connections shoal
           sudo apt-get update
-          sudo apt-get install -y kwin-wayland dbus-x11
+          sudo apt-get install -y --no-install-recommends kwin-wayland dbus-x11
           export XDG_RUNTIME_DIR="/run/user/$(id -u)"
           mkdir -p "$XDG_RUNTIME_DIR"
           chmod 700 "$XDG_RUNTIME_DIR"
-          export WAYLAND_DISPLAY=wayland-shoal-test
+          # Snap's Wayland interface permits the standard numeric socket names.
+          export WAYLAND_DISPLAY=wayland-99
+          sudo systemctl start "user@$(id -u).service"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          systemctl --user start dbus.socket
           QT_QPA_PLATFORM=offscreen KWIN_COMPOSE=Q LIBGL_ALWAYS_SOFTWARE=1 \
             dbus-run-session -- kwin_wayland --virtual --width 1280 --height 800 \
             --no-lockscreen --no-global-shortcuts --no-kactivities \
@@ -59,11 +93,11 @@ jobs:
           timeout 15 snap run shoal --quit
           wait "$app"
       - name: Save Snap package
-        if: always() && steps.build.outcome == 'success'
+        if: always() && steps.package.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: shoal-snap-amd64
-          path: ${{ steps.build.outputs.snap }}
+          path: ${{ steps.package.outputs.snap }}
           if-no-files-found: error
           retention-days: 30
       - name: Save desktop diagnostics
