@@ -1,0 +1,6 @@
+/target
+/parts/
+/stage/
+/prime/
+/.snapcraft/
+/*.snap

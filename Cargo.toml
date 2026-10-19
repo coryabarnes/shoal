@@ -1,0 +1,20 @@
+[package]
+name = "shoal"
+version = "0.1.0"
+edition = "2024"
+authors = ["Cory A. Barnes"]
+description = "A drag-and-drop shelf and clipboard companion for KDE Plasma on Wayland"
+license = "MIT"
+repository = "https://github.com/coryabarnes/shoal"
+
+[dependencies]
+async-channel = "2"
+gio = { version = "0.22", features = ["v2_80"] }
+gtk = { version = "0.11", package = "gtk4", features = ["v4_12"] }
+gtk4-layer-shell = "0.8"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "tiff"] }
+ksni = { version = "0.3", features = ["blocking"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+uuid = { version = "1.28.0", features = ["v4", "serde"] }
+zip = { version = "9.0.5", default-features = false, features = ["deflate"] }

@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    name: Format, lint, test, build
+    runs-on: ubuntu-latest
+    # Fedora ships gtk4-layer-shell; build where Shoal is developed.
+    container: fedora:44
+    steps:
+      - name: Install build dependencies
+        run: >
+          dnf install -y --setopt=install_weak_deps=False
+          git gcc rust cargo clippy rustfmt gtk4-devel gtk4-layer-shell-devel
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: fedora44-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: fedora44-cargo-
+
+      - name: Formatting
+        run: cargo fmt --check
+
+      - name: Lints (warnings are errors)
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Unit tests
+        run: cargo test --locked
+
+      - name: Release build
+        run: cargo build --release --locked
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shoal-linux-x86_64
+          path: target/release/shoal
