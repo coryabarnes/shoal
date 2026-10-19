@@ -159,10 +159,10 @@ pub fn read() -> ClipContent {
     {
         return ClipContent::Text(text.clone());
     }
-    if let Some((mime, ext)) = image_type {
-        if let Some(data) = wl_paste(&["--type", mime]).filter(|d| !d.is_empty()) {
-            return ClipContent::Image(data, ext);
-        }
+    if let Some((mime, ext)) = image_type
+        && let Some(data) = wl_paste(&["--type", mime]).filter(|d| !d.is_empty())
+    {
+        return ClipContent::Image(data, ext);
     }
     text.map_or(ClipContent::Empty, ClipContent::Text)
 }

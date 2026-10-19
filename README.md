@@ -1,5 +1,7 @@
 # Shoal
 
+<img src="assets/shoal.svg" width="96" height="96" alt="Shoal icon">
+
 [![CI](https://github.com/coryabarnes/shoal/actions/workflows/ci.yml/badge.svg)](https://github.com/coryabarnes/shoal/actions/workflows/ci.yml)
 
 A drag-and-drop shelf for Linux, by [Cory Barnes](https://github.com/coryabarnes).
@@ -13,8 +15,35 @@ Written in Rust and GTK4 for KDE Plasma on Wayland. Based on
 
 ## Install
 
+Shoal runs on KDE Plasma **Wayland**, or another Wayland desktop with
+layer-shell support. GNOME and X11 sessions are not supported.
+
+### Snap preview
+
+The Snap is built and tested by [GitHub Actions](https://github.com/coryabarnes/shoal/actions/workflows/snap.yml).
+Preview releases are published to the Snap Store's edge channel:
+
 ```sh
-sudo dnf install gtk4-devel gtk4-layer-shell-devel wl-clipboard
+sudo snap install shoal --edge
+```
+
+For files on USB drives or other mounted media, also run:
+
+```sh
+sudo snap connect shoal:removable-media
+```
+
+The Snap can access ordinary files in your home folder. Hidden folders and
+system files remain restricted. Snap data is separate from a native installation:
+`~/snap/shoal/current/.local/share/shoal/` and
+`~/snap/shoal/current/.config/shoal/`. **Start at Login** is optional and uses
+snapd's supported autostart integration. The shortcut requires a desktop with
+the GlobalShortcuts portal, such as KDE Plasma.
+
+### Build from source on Fedora
+
+```sh
+sudo dnf install cargo gcc gtk4-devel gtk4-layer-shell-devel wl-clipboard
 cargo build --release
 install -Dm755 target/release/shoal ~/.local/bin/shoal
 shoal &

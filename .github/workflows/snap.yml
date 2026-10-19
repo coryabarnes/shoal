@@ -1,0 +1,75 @@
+name: Build and test Snap
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['src/**', 'assets/**', 'Cargo.*', 'snap/**', '.github/workflows/snap.yml']
+  pull_request:
+    paths: ['src/**', 'assets/**', 'Cargo.*', 'snap/**', '.github/workflows/snap.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: snap-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  snap:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Build confined Snap and run unit tests
+        uses: canonical/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79 # v1
+        id: build
+      - name: Check Wayland launch and single-instance commands
+        env:
+          SNAP_FILE: ${{ steps.build.outputs.snap }}
+        run: |
+          sudo snap install --dangerous "$SNAP_FILE"
+          snap connections shoal
+          sudo apt-get update
+          sudo apt-get install -y kwin-wayland dbus-x11
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          mkdir -p "$XDG_RUNTIME_DIR"
+          chmod 700 "$XDG_RUNTIME_DIR"
+          export WAYLAND_DISPLAY=wayland-shoal-test
+          QT_QPA_PLATFORM=offscreen KWIN_COMPOSE=Q LIBGL_ALWAYS_SOFTWARE=1 \
+            dbus-run-session -- kwin_wayland --virtual --width 1280 --height 800 \
+            --no-lockscreen --no-global-shortcuts --no-kactivities \
+            --socket "$WAYLAND_DISPLAY" > compositor.log 2>&1 &
+          compositor=$!
+          trap 'kill "$compositor" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" && break
+            sleep 1
+          done
+          test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+          LIBGL_ALWAYS_SOFTWARE=1 snap run shoal --show > desktop-launch.log 2>&1 &
+          app=$!
+          trap 'kill "$app" "$compositor" 2>/dev/null || true' EXIT
+          sleep 10
+          cat desktop-launch.log
+          kill -0 "$app"
+          grep -F 'Shoal is running' desktop-launch.log
+          timeout 15 snap run shoal --hide
+          timeout 15 snap run shoal --show
+          timeout 15 snap run shoal --quit
+          wait "$app"
+      - name: Save Snap package
+        if: always() && steps.build.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: shoal-snap-amd64
+          path: ${{ steps.build.outputs.snap }}
+          if-no-files-found: error
+          retention-days: 30
+      - name: Save desktop diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: shoal-desktop-logs
+          path: '*.log'
+          if-no-files-found: ignore

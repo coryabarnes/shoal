@@ -655,49 +655,41 @@ impl Shelf {
         let formats = drop.formats();
 
         // 1. Real files (file managers, most apps)
-        if offers_files(&formats) {
-            if let Ok(value) = drop
+        if offers_files(&formats)
+            && let Ok(value) = drop
                 .read_value_future(gdk::FileList::static_type(), glib::Priority::DEFAULT)
                 .await
-            {
-                if let Ok(list) = value.get::<gdk::FileList>() {
-                    let paths: Vec<PathBuf> =
-                        list.files().iter().filter_map(|f| f.path()).collect();
-                    if !paths.is_empty() {
-                        self.add(paths, true);
-                        return true;
-                    }
-                }
+            && let Ok(list) = value.get::<gdk::FileList>()
+        {
+            let paths: Vec<PathBuf> = list.files().iter().filter_map(|f| f.path()).collect();
+            if !paths.is_empty() {
+                self.add(paths, true);
+                return true;
             }
         }
 
         // 2. Raw image data (images dragged from browsers)
-        if offers_image(&formats) {
-            if let Ok(value) = drop
+        if offers_image(&formats)
+            && let Ok(value) = drop
                 .read_value_future(gdk::Texture::static_type(), glib::Priority::DEFAULT)
                 .await
-            {
-                if let Ok(texture) = value.get::<gdk::Texture>() {
-                    let png = texture.save_to_png_bytes();
-                    self.capture(ClipContent::Image(png.to_vec(), "png"), false);
-                    return true;
-                }
-            }
+            && let Ok(texture) = value.get::<gdk::Texture>()
+        {
+            let png = texture.save_to_png_bytes();
+            self.capture(ClipContent::Image(png.to_vec(), "png"), false);
+            return true;
         }
 
         // 3. Plain text, including web links, becomes a snippet
-        if offers_text(&formats) || offers_files(&formats) {
-            if let Ok(value) = drop
+        if (offers_text(&formats) || offers_files(&formats))
+            && let Ok(value) = drop
                 .read_value_future(glib::Type::STRING, glib::Priority::DEFAULT)
                 .await
-            {
-                if let Ok(text) = value.get::<String>() {
-                    if !text.trim().is_empty() {
-                        self.capture(ClipContent::Text(text), false);
-                        return true;
-                    }
-                }
-            }
+            && let Ok(text) = value.get::<String>()
+            && !text.trim().is_empty()
+        {
+            self.capture(ClipContent::Text(text), false);
+            return true;
         }
         false
     }
@@ -725,23 +717,23 @@ impl Shelf {
             .collect();
         let file_list =
             gdk::ContentProvider::for_value(&gdk::FileList::from_array(&files).to_value());
-        if let [item] = items.as_slice() {
-            if item.is_snippet() {
-                if let Some(Snippet::Link(url)) = preview::snippet(item.path()) {
-                    return Some(gdk::ContentProvider::new_union(&[
-                        gdk::ContentProvider::for_bytes(
-                            "text/uri-list",
-                            &glib::Bytes::from_owned(format!("{url}\r\n").into_bytes()),
-                        ),
-                        gdk::ContentProvider::for_value(&url.to_value()),
-                    ]));
-                }
-                if let Some(text) = preview::read_snippet_text(item.path()) {
-                    return Some(gdk::ContentProvider::new_union(&[
-                        file_list,
-                        gdk::ContentProvider::for_value(&text.to_value()),
-                    ]));
-                }
+        if let [item] = items.as_slice()
+            && item.is_snippet()
+        {
+            if let Some(Snippet::Link(url)) = preview::snippet(item.path()) {
+                return Some(gdk::ContentProvider::new_union(&[
+                    gdk::ContentProvider::for_bytes(
+                        "text/uri-list",
+                        &glib::Bytes::from_owned(format!("{url}\r\n").into_bytes()),
+                    ),
+                    gdk::ContentProvider::for_value(&url.to_value()),
+                ]));
+            }
+            if let Some(text) = preview::read_snippet_text(item.path()) {
+                return Some(gdk::ContentProvider::new_union(&[
+                    file_list,
+                    gdk::ContentProvider::for_value(&text.to_value()),
+                ]));
             }
         }
         Some(file_list)
@@ -983,12 +975,11 @@ impl Shelf {
         let launcher = gtk::FileLauncher::new(Some(&gio::File::for_path(item.path())));
         launcher.set_always_ask(true);
         launcher.launch(Some(&self.window), gio::Cancellable::NONE, |result| {
-            if let Err(err) = result {
-                if !err.matches(gtk::DialogError::Dismissed)
-                    && !err.matches(gtk::DialogError::Cancelled)
-                {
-                    eprintln!("Shoal: Open With failed: {err}");
-                }
+            if let Err(err) = result
+                && !err.matches(gtk::DialogError::Dismissed)
+                && !err.matches(gtk::DialogError::Cancelled)
+            {
+                eprintln!("Shoal: Open With failed: {err}");
             }
         });
     }
@@ -997,18 +988,17 @@ impl Shelf {
     /// anything else copies as files.
     fn copy_targets(&self, ids: &[Uuid]) {
         let items = self.items_for(ids);
-        if let [item] = items.as_slice() {
-            if item.is_snippet() {
-                if let Some(text) = preview::read_snippet_text(item.path()) {
-                    let text = match preview::snippet(item.path()) {
-                        Some(Snippet::Link(url)) => url,
-                        _ => text,
-                    };
-                    self.note_clipboard_write(content_hash(text.as_bytes()));
-                    clipboard::copy_text(&text);
-                    return;
-                }
-            }
+        if let [item] = items.as_slice()
+            && item.is_snippet()
+            && let Some(text) = preview::read_snippet_text(item.path())
+        {
+            let text = match preview::snippet(item.path()) {
+                Some(Snippet::Link(url)) => url,
+                _ => text,
+            };
+            self.note_clipboard_write(content_hash(text.as_bytes()));
+            clipboard::copy_text(&text);
+            return;
         }
         if items.is_empty() {
             return;
@@ -1187,9 +1177,8 @@ impl Shelf {
             return;
         }
         let group = gio::SimpleActionGroup::new();
-        let add = |name: &str,
-                   param: Option<&glib::VariantTy>,
-                   f: Box<dyn Fn(Option<&glib::Variant>)>| {
+        type MenuAction = Box<dyn Fn(Option<&glib::Variant>)>;
+        let add = |name: &str, param: Option<&glib::VariantTy>, f: MenuAction| {
             let action = gio::SimpleAction::new(name, param);
             action.connect_activate(move |_, p| f(p));
             group.add_action(&action);
@@ -1365,7 +1354,7 @@ impl Shelf {
                 gdk::Key::a => self.select_all(),
                 gdk::Key::c => self.copy_targets(&self.targets()),
                 gdk::Key::v => {
-                    let _ = self.app.activate_action("add-clipboard", None);
+                    self.app.activate_action("add-clipboard", None);
                 }
                 gdk::Key::z => self.bring_back_last_removed(),
                 gdk::Key::p => {
@@ -1646,7 +1635,7 @@ impl Shelf {
                 return glib::ControlFlow::Continue;
             }
             // Returning Break removes this source; just forget its id.
-            drop(shelf.fade.take());
+            let _ = shelf.fade.take();
             if let Some(done) = done.take() {
                 done();
             }
@@ -1891,10 +1880,10 @@ fn describe(item: &ShelfItem, snippet: Option<&Snippet>) -> (String, String, Str
             } else {
                 item.folder_name()
             };
-            if actions::is_image(item.path()) {
-                if let Some((w, h)) = preview::image_size(item.path()) {
-                    subtitle.push_str(&format!(" · {w}×{h}"));
-                }
+            if actions::is_image(item.path())
+                && let Some((w, h)) = preview::image_size(item.path())
+            {
+                subtitle.push_str(&format!(" · {w}×{h}"));
             }
             (item.display_name(), subtitle, item.path.clone())
         }
@@ -2030,11 +2019,11 @@ fn schedule_storage_cleanup(item: &ShelfItem) {
     let path = item.path().to_path_buf();
     glib::timeout_add_local_once(Duration::from_secs(60), move || {
         let _ = std::fs::remove_file(&path);
-        if let Some(parent) = path.parent() {
-            if parent != store::files_dir() {
-                // Only succeeds when empty.
-                let _ = std::fs::remove_dir(parent);
-            }
+        if let Some(parent) = path.parent()
+            && parent != store::files_dir()
+        {
+            // Only succeeds when empty.
+            let _ = std::fs::remove_dir(parent);
         }
     });
 }

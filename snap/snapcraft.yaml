@@ -1,0 +1,86 @@
+name: shoal
+title: Shoal
+version: '0.1.0'
+summary: A drag-and-drop shelf and clipboard companion for Wayland
+description: |
+  Keep files, text snippets, links and images close at hand. Drag them onto
+  Shoal's shelf at the screen edge, switch to another app, and drag them out
+  when you need them. Pin frequently used items so they stay within reach.
+
+  Shoal includes clipboard capture, search, multi-selection, image previews,
+  ZIP compression, image conversion and resizing. A system tray menu and a
+  configurable global shortcut make the shelf easy to reach. Everything
+  stays on your computer; no account or network connection is required.
+
+  Designed for KDE Plasma on Wayland. Requires a Wayland compositor with
+  layer-shell support; GNOME and X11 sessions are not supported. The global
+  shortcut requires the desktop's GlobalShortcuts portal. USB drives can be
+  enabled with: sudo snap connect shoal:removable-media
+license: MIT
+website: https://github.com/coryabarnes/shoal
+source-code: https://github.com/coryabarnes/shoal
+issues: https://github.com/coryabarnes/shoal/issues
+icon: assets/shoal-512.png
+base: core24
+grade: stable
+confinement: strict
+
+platforms:
+  amd64:
+
+slots:
+  shoal-dbus:
+    interface: dbus
+    bus: session
+    name: shoal_io.github.coryabarnes.Shoal
+
+apps:
+  shoal:
+    command: bin/shoal
+    desktop: snap/gui/io.github.coryabarnes.Shoal.desktop
+    autostart: shoal.desktop
+    extensions: [gnome]
+    plugs: [home, unity7, removable-media]
+    slots: [shoal-dbus]
+    environment:
+      GDK_BACKEND: wayland
+      GTK_USE_PORTAL: '1'
+
+parts:
+  gtk4-layer-shell:
+    plugin: meson
+    source: https://github.com/wmww/gtk4-layer-shell.git
+    source-commit: 1c963c51514581c41b9bdae08cdf69171265cdda # v1.3.0
+    meson-parameters:
+      - --prefix=/usr
+      - -Dexamples=false
+      - -Ddocs=false
+      - -Dtests=false
+      - -Dsmoke-tests=false
+      - -Dintrospection=false
+      - -Dvapi=false
+    build-packages: [gcc, pkg-config, libwayland-dev, wayland-protocols]
+    prime:
+      - usr/lib/*/libgtk4-layer-shell.so*
+      - usr/share/licenses/**
+  shoal:
+    after: [gtk4-layer-shell]
+    plugin: nil
+    source: .
+    build-packages: [curl, gcc, pkg-config]
+    stage-packages: [wl-clipboard]
+    override-build: |
+      export CARGO_HOME="$CRAFT_PART_BUILD/.cargo"
+      export RUSTUP_HOME="$CRAFT_PART_BUILD/.rustup"
+      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rustup-init.sh
+      sh rustup-init.sh -y --profile minimal --default-toolchain stable --no-modify-path
+      export PATH="$CARGO_HOME/bin:$PATH"
+      export PKG_CONFIG_PATH="$CRAFT_STAGE/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/pkgconfig:$PKG_CONFIG_PATH"
+      export LD_LIBRARY_PATH="$CRAFT_STAGE/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR:$LD_LIBRARY_PATH"
+      cargo test --locked
+      cargo build --locked --release
+      install -Dm755 target/release/shoal "$CRAFT_PART_INSTALL/bin/shoal"
+      install -Dm644 snap/gui/io.github.coryabarnes.Shoal.desktop "$CRAFT_PART_INSTALL/snap/gui/io.github.coryabarnes.Shoal.desktop"
+      install -Dm644 assets/shoal-512.png "$CRAFT_PART_INSTALL/meta/gui/shoal.png"
+      install -Dm644 assets/shoal.svg "$CRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/apps/shoal.svg"
+      install -Dm644 LICENSE "$CRAFT_PART_INSTALL/usr/share/licenses/shoal/LICENSE"

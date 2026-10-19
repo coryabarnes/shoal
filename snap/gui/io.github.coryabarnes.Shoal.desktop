@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Shoal
+GenericName=Drag-and-Drop Shelf
+Comment=Keep files, snippets and images close at hand
+Exec=shoal
+Icon=${SNAP}/meta/gui/shoal.png
+Categories=Utility;
+Keywords=clipboard;shelf;files;drag;drop;
+StartupNotify=false
+StartupWMClass=shoal_io.github.coryabarnes.Shoal

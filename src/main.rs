@@ -26,6 +26,16 @@ use tray::{Cmd, ShoalTray, TrayState};
 
 const APP_ID: &str = "io.github.coryabarnes.Shoal";
 
+fn app_id() -> &'static str {
+    // Match the desktop file exported by snapd, so Wayland groups the window
+    // under Shoal's launcher and keeps it separate from a native installation.
+    if std::env::var_os("SNAP").is_some() {
+        "shoal_io.github.coryabarnes.Shoal"
+    } else {
+        APP_ID
+    }
+}
+
 /// `--self-test` runs a private instance: no tray icon, clipboard watcher or
 /// hotkey, and no clash with a Shoal already running.
 fn is_self_test() -> bool {
@@ -406,7 +416,7 @@ fn startup(app: &gtk::Application) -> Rc<App> {
     state.hotkey.replace(
         (!self_test)
             .then(|| {
-                Hotkey::start(APP_ID, move |id| {
+                Hotkey::start(app_id(), move |id| {
                     if id == hotkey::TOGGLE_SHELF {
                         shelf.toggle_focused();
                     }
@@ -423,7 +433,7 @@ fn startup(app: &gtk::Application) -> Rc<App> {
 
 fn main() -> glib::ExitCode {
     let app = gtk::Application::builder()
-        .application_id(APP_ID)
+        .application_id(app_id())
         .flags(if is_self_test() {
             gio::ApplicationFlags::HANDLES_COMMAND_LINE | gio::ApplicationFlags::NON_UNIQUE
         } else {
