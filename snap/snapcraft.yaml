@@ -62,7 +62,7 @@ parts:
     build-packages: [gcc, pkg-config, libwayland-dev, wayland-protocols]
     override-build: |
       craftctl default
-      install -Dm644 LICENSE "$CRAFT_PART_INSTALL/usr/share/licenses/gtk4-layer-shell/LICENSE"
+      install -Dm644 "$CRAFT_PART_SRC/LICENSE" "$CRAFT_PART_INSTALL/usr/share/licenses/gtk4-layer-shell/LICENSE"
     prime:
       - usr/lib/*/libgtk4-layer-shell.so*
       - usr/share/licenses/**
