@@ -8,6 +8,7 @@ mod preview;
 mod settings;
 mod shelf;
 mod store;
+mod trash;
 mod tray;
 
 use gtk::prelude::*;

@@ -1999,13 +1999,15 @@ fn trash_original_soon(path: PathBuf) {
         if !path.exists() {
             return;
         }
-        match gio::File::for_path(&path).trash(gio::Cancellable::NONE) {
-            Ok(()) => eprintln!(
-                "Shoal: moved original to Trash after drag-out: {}",
-                path.display()
-            ),
-            Err(err) => eprintln!("Shoal: could not trash original {}: {err}", path.display()),
-        }
+        glib::spawn_future_local(async move {
+            match crate::trash::move_original(&path).await {
+                Ok(()) => eprintln!(
+                    "Shoal: moved original to Trash after drag-out: {}",
+                    path.display()
+                ),
+                Err(err) => eprintln!("Shoal: could not trash original {}: {err}", path.display()),
+            }
+        });
     });
 }
 

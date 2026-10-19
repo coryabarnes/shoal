@@ -1093,6 +1093,7 @@ dependencies = [
  "gtk4-layer-shell",
  "image",
  "ksni",
+ "libc",
  "serde",
  "serde_json",
  "uuid",

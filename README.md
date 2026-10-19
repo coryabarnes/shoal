@@ -38,7 +38,9 @@ system files remain restricted. Snap data is separate from a native installation
 `~/snap/shoal/current/.local/share/shoal/` and
 `~/snap/shoal/current/.config/shoal/`. **Start at Login** is optional and uses
 snapd's supported autostart integration. The shortcut requires a desktop with
-the GlobalShortcuts portal, such as KDE Plasma.
+the GlobalShortcuts portal, such as KDE Plasma. Removing originals uses the
+desktop's Trash portal, so files can be recovered through your normal file
+manager. If the portal cannot trash an item, Shoal keeps the original.
 
 ### Build from source on Fedora
 
@@ -139,6 +141,15 @@ runs everything CI runs (formatting, clippy with warnings as errors, unit tests,
 release build) and then, in a Wayland session, `shoal --self-test`: a debug-only
 mode that drives the real shelf through selection, keyboard, pinning, undo,
 quick actions, clipboard capture and search, using throwaway data folders.
+
+To check desktop Trash integration in a real desktop session:
+
+```sh
+cargo test --locked portal_uses_desktop_trash -- --ignored
+```
+
+This check uses uniquely named throwaway files, verifies that a symlink cannot
+trash its target, and removes its own Trash fixtures afterward.
 
 ## How it differs from Ledge for macOS
 
