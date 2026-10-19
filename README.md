@@ -46,6 +46,7 @@ the GlobalShortcuts portal, such as KDE Plasma.
 sudo dnf install cargo gcc gtk4-devel gtk4-layer-shell-devel wl-clipboard
 cargo build --release
 install -Dm755 target/release/shoal ~/.local/bin/shoal
+install -Dm644 assets/shoal.svg ~/.local/share/icons/hicolor/scalable/apps/shoal.svg
 shoal &
 ```
 

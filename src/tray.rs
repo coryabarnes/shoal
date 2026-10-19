@@ -5,7 +5,7 @@ use crate::settings::{ShelfPosition, ShelfSize};
 use ksni::menu::{CheckmarkItem, RadioGroup, RadioItem, StandardItem, SubMenu};
 use ksni::{MenuItem, ToolTip};
 
-pub const ICON: &str = "folder-download-symbolic";
+pub const ICON: &str = "shoal";
 
 pub enum Cmd {
     Action(&'static str),
@@ -71,8 +71,33 @@ impl ksni::Tray for ShoalTray {
         "Shoal".into()
     }
 
-    fn icon_name(&self) -> String {
-        ICON.into()
+    fn icon_pixmap(&self) -> Vec<ksni::Icon> {
+        // Send pixels directly: a sandbox's icon theme may not be visible to
+        // the host tray. Cache the small sizes commonly used by desktop panels.
+        static ICONS: std::sync::OnceLock<Vec<ksni::Icon>> = std::sync::OnceLock::new();
+        ICONS
+            .get_or_init(|| {
+                let source = image::load_from_memory(include_bytes!("../assets/shoal-512.png"))
+                    .expect("valid bundled Shoal icon");
+                [16, 22, 32, 64]
+                    .into_iter()
+                    .map(|size| {
+                        let mut rgba = source
+                            .resize_exact(size, size, image::imageops::FilterType::Lanczos3)
+                            .into_rgba8()
+                            .into_raw();
+                        for pixel in rgba.as_chunks_mut::<4>().0 {
+                            pixel.rotate_right(1); // RGBA to network-order ARGB.
+                        }
+                        ksni::Icon {
+                            width: size as i32,
+                            height: size as i32,
+                            data: rgba,
+                        }
+                    })
+                    .collect()
+            })
+            .clone()
     }
 
     fn tool_tip(&self) -> ToolTip {

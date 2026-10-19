@@ -342,6 +342,7 @@ fn add_actions(app: &gtk::Application, state: &Rc<App>, sync: &Rc<dyn Fn()>) {
 }
 
 fn startup(app: &gtk::Application) -> Rc<App> {
+    gtk::Window::set_default_icon_name(tray::ICON);
     let settings = Rc::new(RefCell::new(Settings::load()));
     let menu = build_menu();
     let shelf = Shelf::new(app, settings.clone(), menu.upcast());
