@@ -21,7 +21,11 @@ layer-shell support. GNOME and X11 sessions are not supported.
 ### Snap preview
 
 The Snap is built and tested by [GitHub Actions](https://github.com/coryabarnes/shoal/actions/workflows/snap.yml).
-Preview releases are published to the Snap Store's edge channel:
+Version 0.1.0 has been uploaded to the Snap Store and is awaiting Canonical's
+one-time review of its desktop D-Bus name. The tested Snap and checksum are
+available from [GitHub Releases](https://github.com/coryabarnes/shoal/releases).
+
+After Store approval, install the preview from the edge channel:
 
 ```sh
 sudo snap install shoal --edge
