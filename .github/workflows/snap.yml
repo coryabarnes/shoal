@@ -18,7 +18,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: snap-${{ github.ref }}
+  group: snap-${{ github.ref }}-${{ inputs.artifact_run_id || 'build' }}
   cancel-in-progress: true
 
 jobs:

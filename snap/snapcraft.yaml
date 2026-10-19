@@ -37,7 +37,6 @@ slots:
 apps:
   shoal:
     command: bin/shoal
-    desktop: snap/gui/io.github.coryabarnes.Shoal.desktop
     autostart: shoal.desktop
     extensions: [gnome]
     plugs: [home, unity7, removable-media]
