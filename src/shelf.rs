@@ -114,6 +114,11 @@ pub struct Shelf {
     hiding: Cell<bool>,
     fade: RefCell<Option<glib::SourceId>>,
     on_changed: RefCell<Option<Box<dyn Fn()>>>,
+    /// Whether the compositor supports the wlr-layer-shell protocol
+    /// (true under KDE Plasma/Wayland, false under X11 sessions such as
+    /// XFCE). When false the shelf falls back to a plain floating window
+    /// instead of docking to a screen edge.
+    layer_shell: bool,
 }
 
 impl Shelf {
@@ -132,6 +137,8 @@ impl Shelf {
             );
         }
 
+        let layer_shell = gtk4_layer_shell::is_supported();
+
         let window = gtk::Window::builder()
             .application(app)
             .title("Shoal")
@@ -139,11 +146,18 @@ impl Shelf {
             .resizable(false)
             .css_classes(["shoal"])
             .build();
-        window.init_layer_shell();
-        window.set_namespace(Some("shoal"));
-        window.set_layer(Layer::Overlay);
-        // Like a non-activating panel: focus only when clicked.
-        window.set_keyboard_mode(KeyboardMode::OnDemand);
+        if layer_shell {
+            window.init_layer_shell();
+            window.set_namespace(Some("shoal"));
+            window.set_layer(Layer::Overlay);
+            // Like a non-activating panel: focus only when clicked.
+            window.set_keyboard_mode(KeyboardMode::OnDemand);
+        } else {
+            // X11 fallback (e.g. XFCE): no layer-shell protocol, so this is
+            // a plain always-on-top floating window instead of an
+            // edge-docked panel.
+            window.set_deletable(false);
+        }
 
         let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
         root.add_css_class("shelf");
@@ -268,6 +282,7 @@ impl Shelf {
             hiding: Cell::new(false),
             fade: RefCell::default(),
             on_changed: RefCell::default(),
+            layer_shell,
         });
 
         shelf.clear_button.connect_clicked({
@@ -1570,18 +1585,25 @@ impl Shelf {
     /// Shows the shelf on the screen in use, with keyboard focus, for the
     /// hotkey, tray and command line.
     pub fn show_focused(self: &Rc<Self>) {
-        if !self.window.is_visible() {
-            // No fixed monitor: the compositor picks the active screen.
-            self.window.set_monitor(None);
+        if self.layer_shell {
+            if !self.window.is_visible() {
+                // No fixed monitor: the compositor picks the active screen.
+                self.window.set_monitor(None);
+            }
+            // Exclusive takes focus now; switching back to on-demand right
+            // after keeps that focus while letting clicks elsewhere take it
+            // away.
+            self.window.set_keyboard_mode(KeyboardMode::Exclusive);
         }
-        // Exclusive takes focus now; switching back to on-demand right after
-        // keeps that focus while letting clicks elsewhere take it away.
-        self.window.set_keyboard_mode(KeyboardMode::Exclusive);
         self.show();
-        let shelf = self.clone();
-        glib::timeout_add_local_once(Duration::from_millis(300), move || {
-            shelf.window.set_keyboard_mode(KeyboardMode::OnDemand);
-        });
+        if self.layer_shell {
+            let shelf = self.clone();
+            glib::timeout_add_local_once(Duration::from_millis(300), move || {
+                shelf.window.set_keyboard_mode(KeyboardMode::OnDemand);
+            });
+        } else {
+            self.window.present();
+        }
         if self.cursor.get().is_none() {
             self.cursor.set(self.visible_items().first().map(|i| i.id));
         }
@@ -1601,7 +1623,9 @@ impl Shelf {
                 shelf.hiding.set(false);
                 shelf.window.set_visible(false);
                 shelf.window.set_opacity(1.0);
-                shelf.window.set_keyboard_mode(KeyboardMode::OnDemand);
+                if shelf.layer_shell {
+                    shelf.window.set_keyboard_mode(KeyboardMode::OnDemand);
+                }
                 shelf.search.set_text("");
                 shelf.search_bar.set_search_mode(false);
                 shelf.notify();
@@ -1671,9 +1695,16 @@ impl Shelf {
     }
 
     /// One invisible 1px drop strip per screen, on the shelf's side.
+    ///
+    /// Relies on layer-shell to pin a 1px-wide strip to a screen edge above
+    /// everything else; there's no X11 equivalent in this fallback, so edge
+    /// hover-to-open is unavailable there (use the tray icon or hotkey).
     fn rebuild_edge_windows(self: &Rc<Self>) {
         for window in self.edge_windows.take() {
             window.destroy();
+        }
+        if !self.layer_shell {
+            return;
         }
         let settings = self.settings.borrow().clone();
         if !settings.edge_trigger {
@@ -1714,6 +1745,12 @@ impl Shelf {
     }
 
     fn position_at_edge(&self) {
+        if !self.layer_shell {
+            // X11 fallback: no anchoring protocol, so the window manager
+            // places the floating window (centered, typically); the user
+            // can drag it wherever they like.
+            return;
+        }
         let pos = self.settings.borrow().position;
         let left = pos.is_left();
         self.window.set_anchor(Edge::Left, left);
