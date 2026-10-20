@@ -10,6 +10,7 @@ mod shelf;
 mod store;
 mod trash;
 mod tray;
+mod x11_backend;
 
 use gtk::prelude::*;
 use gtk::{gio, glib};

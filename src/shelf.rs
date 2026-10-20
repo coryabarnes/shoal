@@ -6,6 +6,7 @@ use crate::clipboard::{self, ClipContent};
 use crate::preview::{self, Snippet};
 use crate::settings::Settings;
 use crate::store::{self, ShelfItem};
+use crate::x11_backend;
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
@@ -119,6 +120,10 @@ pub struct Shelf {
     /// XFCE). When false the shelf falls back to a plain floating window
     /// instead of docking to a screen edge.
     layer_shell: bool,
+    /// The monitor the shelf is pinned to when `!layer_shell`, chosen from
+    /// the pointer position the last time the shelf was opened from
+    /// hidden.
+    x11_monitor: RefCell<Option<gdk::Monitor>>,
 }
 
 impl Shelf {
@@ -153,10 +158,13 @@ impl Shelf {
             // Like a non-activating panel: focus only when clicked.
             window.set_keyboard_mode(KeyboardMode::OnDemand);
         } else {
-            // X11 fallback (e.g. XFCE): no layer-shell protocol, so this is
-            // a plain always-on-top floating window instead of an
-            // edge-docked panel.
+            // X11 fallback (e.g. XFCE): no layer-shell protocol. Made
+            // override-redirect so it can still be placed at a screen edge
+            // under our own control, like a panel.
             window.set_deletable(false);
+            if x11_backend::is_x11() {
+                x11_backend::prepare(&window);
+            }
         }
 
         let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -283,6 +291,7 @@ impl Shelf {
             fade: RefCell::default(),
             on_changed: RefCell::default(),
             layer_shell,
+            x11_monitor: RefCell::default(),
         });
 
         shelf.clear_button.connect_clicked({
@@ -1573,6 +1582,12 @@ impl Shelf {
             return;
         }
         if !self.window.is_visible() {
+            if !self.layer_shell
+                && let Some(display) = gdk::Display::default()
+            {
+                self.x11_monitor
+                    .replace(x11_backend::pointer_monitor(&display));
+            }
             self.position_at_edge();
             self.window.set_opacity(0.0);
             self.window.set_visible(true);
@@ -1603,6 +1618,7 @@ impl Shelf {
             });
         } else {
             self.window.present();
+            x11_backend::focus(&self.window);
         }
         if self.cursor.get().is_none() {
             self.cursor.set(self.visible_items().first().map(|i| i.id));
@@ -1695,16 +1711,9 @@ impl Shelf {
     }
 
     /// One invisible 1px drop strip per screen, on the shelf's side.
-    ///
-    /// Relies on layer-shell to pin a 1px-wide strip to a screen edge above
-    /// everything else; there's no X11 equivalent in this fallback, so edge
-    /// hover-to-open is unavailable there (use the tray icon or hotkey).
     fn rebuild_edge_windows(self: &Rc<Self>) {
         for window in self.edge_windows.take() {
             window.destroy();
-        }
-        if !self.layer_shell {
-            return;
         }
         let settings = self.settings.borrow().clone();
         if !settings.edge_trigger {
@@ -1725,19 +1734,39 @@ impl Shelf {
                 .decorated(false)
                 .css_classes(["shoal-edge"])
                 .build();
-            edge.init_layer_shell();
-            edge.set_namespace(Some("shoal-edge"));
-            edge.set_layer(Layer::Overlay);
-            edge.set_keyboard_mode(KeyboardMode::None);
-            edge.set_monitor(Some(&monitor));
-            edge.set_anchor(Edge::Top, true);
-            edge.set_anchor(Edge::Bottom, true);
-            edge.set_anchor(Edge::Left, settings.position.is_left());
-            edge.set_anchor(Edge::Right, !settings.position.is_left());
-            edge.set_default_size(1, 1);
+            if self.layer_shell {
+                edge.init_layer_shell();
+                edge.set_namespace(Some("shoal-edge"));
+                edge.set_layer(Layer::Overlay);
+                edge.set_keyboard_mode(KeyboardMode::None);
+                edge.set_monitor(Some(&monitor));
+                edge.set_anchor(Edge::Top, true);
+                edge.set_anchor(Edge::Bottom, true);
+                edge.set_anchor(Edge::Left, settings.position.is_left());
+                edge.set_anchor(Edge::Right, !settings.position.is_left());
+                edge.set_default_size(1, 1);
+            } else if x11_backend::is_x11() {
+                // No GTK layout manager is sizing this window (there's no
+                // WM involved), so give it the geometry we want up front;
+                // otherwise GTK resizes it back to its own natural size
+                // right after we place it.
+                edge.set_default_size(1, monitor.geometry().height());
+                x11_backend::prepare(&edge);
+            } else {
+                continue;
+            }
             let strip = gtk::Box::builder().width_request(1).vexpand(true).build();
             edge.set_child(Some(&strip));
-            self.attach_drop_target(&strip.upcast(), Some(monitor));
+            self.attach_drop_target(&strip.upcast(), Some(monitor.clone()));
+            if !self.layer_shell {
+                let geom = monitor.geometry();
+                let x = if settings.position.is_left() {
+                    geom.x()
+                } else {
+                    geom.x() + geom.width() - 1
+                };
+                x11_backend::place(&edge, x, geom.y(), 1, geom.height());
+            }
             edge.set_visible(true);
             windows.push(edge);
         }
@@ -1746,9 +1775,7 @@ impl Shelf {
 
     fn position_at_edge(&self) {
         if !self.layer_shell {
-            // X11 fallback: no anchoring protocol, so the window manager
-            // places the floating window (centered, typically); the user
-            // can drag it wherever they like.
+            self.position_x11();
             return;
         }
         let pos = self.settings.borrow().position;
@@ -1763,10 +1790,51 @@ impl Shelf {
         }
     }
 
+    /// Places the override-redirect window at the configured screen edge,
+    /// standing in for layer-shell's anchor/margin on X11 sessions.
+    fn position_x11(&self) {
+        if !x11_backend::is_x11() {
+            return;
+        }
+        let settings = self.settings.borrow().clone();
+        let width = settings.size.width() + 2 * SHADOW_PAD;
+        let height = self.desired_height() + 2 * SHADOW_PAD;
+        let monitor = self
+            .x11_monitor
+            .borrow()
+            .clone()
+            .or_else(|| gdk::Display::default().and_then(|d| x11_backend::pointer_monitor(&d)));
+        let Some(monitor) = monitor else { return };
+        let geom = monitor.geometry();
+        let margin = EDGE_MARGIN - SHADOW_PAD;
+        let x = if settings.position.is_left() {
+            geom.x() + margin
+        } else {
+            geom.x() + geom.width() - width - margin
+        };
+        let y = if settings.position.is_top() {
+            geom.y() + margin
+        } else if settings.position.is_bottom() {
+            geom.y() + geom.height() - height - margin
+        } else {
+            geom.y() + (geom.height() - height) / 2
+        };
+        x11_backend::place(&self.window, x, y, width, height);
+    }
+
     fn monitor_height(&self) -> i32 {
         let Some(display) = gdk::Display::default() else {
             return 800;
         };
+        if !self.layer_shell {
+            return self
+                .x11_monitor
+                .borrow()
+                .clone()
+                .or_else(|| x11_backend::pointer_monitor(&display))
+                .map(|m| m.geometry().height())
+                .unwrap_or(800);
+        }
         self.window
             .monitor()
             .or_else(|| {
@@ -1806,6 +1874,12 @@ impl Shelf {
         self.root.set_size_request(width, height);
         self.window
             .set_default_size(width + 2 * SHADOW_PAD, height + 2 * SHADOW_PAD);
+        // Growing/shrinking the content resizes an override-redirect
+        // window in place (top-left anchored) instead of keeping it
+        // docked to the edge, so re-place it.
+        if !self.layer_shell && self.window.is_visible() {
+            self.position_x11();
+        }
     }
 
     /// Items in display order (unpinned first, then pinned), filtered by

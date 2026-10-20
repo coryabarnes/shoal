@@ -10,13 +10,27 @@ need to go, then drag it back out. Copy things and they stack up instead of
 overwriting each other. No account, no network calls; everything stays on your
 machine.
 
-Written in Rust and GTK4 for KDE Plasma on Wayland. Based on
+Written in Rust and GTK4, originally for KDE Plasma on Wayland and now also
+X11 desktops such as XFCE. Based on
 [Ledge](https://github.com/marcotteink/ledge) for macOS by Matt Marcotte.
 
 ## Install
 
 Shoal runs on KDE Plasma **Wayland**, or another Wayland desktop with
-layer-shell support. GNOME and X11 sessions are not supported.
+layer-shell support, with every feature described below. GNOME on Wayland
+without layer-shell is not supported.
+
+It also runs on **X11 sessions**, including XFCE, through a fallback
+backend. The shelf still docks to a screen edge, resizes, and has an
+edge-hover drop strip, but a few things differ from Wayland/KDE:
+
+- No `GlobalShortcuts` portal on most X11 desktops — bind `shoal --toggle`
+  to a key yourself in your desktop's keyboard shortcut settings (XFCE:
+  **Settings → Keyboard → Application Shortcuts**).
+- Clipboard watching polls every 500ms via `xclip` instead of subscribing
+  to change events, since `xclip` has no watch mode.
+- Only the monitor under the pointer (at the moment the shelf opens) is
+  used; there's no per-monitor layer-shell surface tracking.
 
 ### Snap preview
 
@@ -49,15 +63,19 @@ manager. If the portal cannot trash an item, Shoal keeps the original.
 ### Build from source on Fedora
 
 ```sh
-sudo dnf install cargo gcc gtk4-devel gtk4-layer-shell-devel wl-clipboard
+sudo dnf install cargo gcc gtk4-devel gtk4-layer-shell-devel wl-clipboard xclip
 cargo build --release
 install -Dm755 target/release/shoal ~/.local/bin/shoal
 install -Dm644 assets/shoal.svg ~/.local/share/icons/hicolor/scalable/apps/shoal.svg
 shoal &
 ```
 
-On first launch KDE asks to confirm Shoal's global shortcut (F5). Change it any
-time from the menu: **Change Global Shortcut…**.
+`wl-clipboard` is used on Wayland/KDE, `xclip` on X11/XFCE; both can be
+installed even if you'll only use one.
+
+On first launch, KDE Plasma asks to confirm Shoal's global shortcut (F5).
+Change it any time from the menu: **Change Global Shortcut…**. On X11
+desktops, bind `shoal --toggle` to a key yourself (see above).
 
 ## Using it
 
